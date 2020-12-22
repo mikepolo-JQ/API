@@ -24,7 +24,7 @@ default:
 
 development:
   HOST: "localhost"
-  PORT: 8000
+  PORT: 8888
 
 
 ci:

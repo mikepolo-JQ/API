@@ -12,3 +12,4 @@ db.sqlite3
 tests/**/*.html
 tests/**/*.png
 venv/
+config/.secrets.yml
