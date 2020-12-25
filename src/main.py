@@ -1,87 +1,152 @@
-from fastapi import FastAPI, status
+from fastapi import FastAPI
+from fastapi import status
+from dynaconf import settings
 
-from src.db import create_post, get_single_post, get_all_posts, get_all_users, get_single_user
-from src.schemas import NewPostSchema, JsonApiResponseSchema, PostSchema, UserSchema
-
-app = FastAPI()
-
-
-@app.get("/")
-def read_root():
-    return {"Hello": "World"}
+from src import db
+from src import schemas
 
 
-@app.post("/post/new/", status_code=status.HTTP_201_CREATED)
-async def new_post(post: NewPostSchema) -> JsonApiResponseSchema:
-    obj = create_post(post)
-    (obj, nr_likes) = get_single_post(obj.id)
-    payload = PostSchema(
+API_URL = "/api/v1"
+
+app = FastAPI(
+    description="example of API based on FastAPI and SqlAlchemy frameworks",
+    docs_url=f"{API_URL}/docs/",
+    openapi_url=f"{API_URL}/openapi.json",
+    redoc_url=f"{API_URL}/redoc/",
+    title="TMS API",
+    version="1.0.0",
+)
+
+
+@app.post(f"{API_URL}/blog/post/", status_code=status.HTTP_201_CREATED)
+async def new_post(payload: schemas.PostApiSchema) -> schemas.PostApiSchema:
+
+    new_post = payload.data
+
+    obj = db.create_post(new_post)
+
+    (obj, nr_likes) = db.get_single_post(obj.id)
+
+    post = schemas.PostSchema(
         id=obj.id,
         author_id=obj.author_id,
         content=obj.content,
-        nr_likes=nr_likes,
+        nr_likes=str(nr_likes),
     )
-    resp = JsonApiResponseSchema(data=payload)
-    return resp
+
+    response = schemas.PostApiSchema(data=post)
+
+    return response
 
 
-@app.get("/post/")
-async def all_posts() -> JsonApiResponseSchema:
-    posts = get_all_posts()
-    payload = [
-        PostSchema(
+@app.get(f"{API_URL}/blog/post/")
+async def all_posts() -> schemas.PostListApiSchema:
+
+    objects = db.get_all_posts()
+
+    posts = [
+        schemas.PostSchema(
             id=post.id,
             author_id=post.author_id,
             content=post.content,
             nr_likes=nr_likes,
         )
-        for (post, nr_likes) in posts
+        for (post, nr_likes) in objects
     ]
-    resp = JsonApiResponseSchema(data=payload)
-    return resp
+
+    response = schemas.PostListApiSchema(data=posts)
+
+    return response
 
 
-@app.get("/post/{{post_id}}")
-async def single_post(post_id: int) -> JsonApiResponseSchema:
-    resp = JsonApiResponseSchema()
-    (post, nr_likes) = get_single_post(post_id)
-    if post:
-        resp.data = PostSchema(
-            id=post.id,
-            author_id=post.author_id,
-            content=post.content,
+@app.get(f"{API_URL}/blog/post/{{post_id}}")
+async def single_post(post_id: int) -> schemas.PostApiSchema:
+
+    response_kwargs = {}
+
+    (obj, nr_likes) = db.get_single_post(post_id)
+
+    if obj:
+
+        response_kwargs["data"] = schemas.PostSchema(
+            id=obj.id,
+            author_id=obj.author_id,
+            content=obj.content,
             nr_likes=nr_likes,
         )
     else:
-        resp.errors = [f"no post found with id={post_id}"]
-    return resp
+
+        response_kwargs["errors"] = [f"post with id={post_id} does not exist"]
+
+    response = schemas.PostApiSchema(**response_kwargs)
+
+    return response
 
 
-@app.get(f"/user/")
-async def all_users() -> JsonApiResponseSchema:
-    users = get_all_users()
-    payload = [
-        UserSchema(
+@app.get(f"{API_URL}/user/")
+async def all_users() -> schemas.UserListApiSchema:
+
+    objects = db.get_all_users()
+
+    users = [
+        schemas.UserSchema(
             id=user.id,
             username=user.username,
             email=user.email,
         )
-        for user in users
+        for user in objects
     ]
-    resp = JsonApiResponseSchema(data=payload)
-    return resp
+
+    response = schemas.UserListApiSchema(data=users)
+
+    return response
 
 
-@app.get(f"/user/{{user_id}}")
-async def single_user(user_id: int) -> JsonApiResponseSchema:
-    resp = JsonApiResponseSchema()
-    user = get_single_user(user_id)
-    if user:
-        resp.data = UserSchema(
-            id=user.id,
-            username=user.username,
-            email=user.email,
+@app.get(f"{API_URL}/user/{{user_id}}")
+async def single_user(user_id: int) -> schemas.UserApiSchema:
+
+    response_kwargs = {}
+
+    obj = db.get_single_user(user_id)
+
+    if obj:
+
+        response_kwargs["data"] = schemas.UserSchema(
+            id=obj.id,
+            username=obj.username,
+            email=obj.email,
         )
     else:
-        resp.errors = [f"no user found with id={user_id}"]
-    return resp
+
+        response_kwargs["errors"] = [f"user with id={user_id} does not exist"]
+
+    response = schemas.UserApiSchema(**response_kwargs)
+
+    return response
+
+
+
+"""async def like(post_id: int) -> MyApiResponseSchema:
+    resp = MyApiResponseSchema()
+    try:
+        with closing(Session()) as session:
+            # post = session.query(Post).filter(Post.id == post_id).first()
+            if 1:
+                # post.nr_likes += 1
+                # session.add(post)
+                # session.commit()
+                like = LikeSchema(post_id=post_id, nr_likes=1)
+                resp.ok = True
+                resp.data = {"like": like}
+            else:
+                resp.errors = [f"post with id={post_id} was not found"]
+    except Exception as err:
+        resp.errors = [str(err), f"unhandled exception: {traceback.format_exc()}"]
+        raise
+    return resp"""
+
+
+if __name__ == "__main__" and settings.MODE_DEBUG:
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8888)
+

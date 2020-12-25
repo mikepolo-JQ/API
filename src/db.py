@@ -1,18 +1,30 @@
 import os
 from contextlib import closing
 from functools import wraps
-from typing import List, Optional, Callable
+from typing import Callable
+from typing import List
+from typing import Optional
 
 from delorean import now
 from dynaconf import settings
-from sqlalchemy import Column, Integer, Text, DateTime, ForeignKey, func, create_engine
+from sqlalchemy import Boolean
+from sqlalchemy import Column
+from sqlalchemy import create_engine
+from sqlalchemy import DateTime
+from sqlalchemy import ForeignKey
+from sqlalchemy import func
+from sqlalchemy import Integer
+from sqlalchemy import Text
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker
+from sqlalchemy.orm import relationship
+from sqlalchemy.orm import sessionmaker
 
-from src.schemas import NewPostSchema
+from src.schemas import PostApiSchema
+from src.schemas import PostSchema
 
 database_url = os.getenv("DATABASE_URL", settings.DATABASE_URL)
 engine = create_engine(database_url)
+
 Model = declarative_base()
 
 
@@ -20,24 +32,23 @@ class Post(Model):
     __tablename__ = "blog_post"
 
     id = Column(Integer, primary_key=True)
-    title = Column(Text, nullable=False)
+    author_id = Column(Integer)
     content = Column(Text)
     created_at = Column(DateTime, nullable=False, default=lambda: now().datetime)
-    likers = relationship("BlogPostLikes", backref="post")
-    author_id = Column(Integer)
+    likers = relationship("BlogPostLike", backref="post")
 
 
 class User(Model):
     __tablename__ = "auth_user"
 
     id = Column(Integer, primary_key=True)
-    username = Column(Text)
+    username = Column(Integer)
     email = Column(Text)
 
-    liked_posts = relationship("BlogPostLikes", backref="user")
+    liked_posts = relationship("BlogPostLike", backref="user")
 
 
-class BlogPostLikes(Model):
+class BlogPostLike(Model):
     __tablename__ = "blog_post_who_likes"
 
     id = Column(Integer, primary_key=True)
@@ -58,7 +69,7 @@ def using_session(func: Callable):
 
 
 @using_session
-def create_post(session: Session, data: NewPostSchema) -> Post:
+def create_post(session: Session, data: PostApiSchema) -> Post:
     post = Post(
         author_id=data.author_id,
         content=data.content,
@@ -74,7 +85,7 @@ def create_post(session: Session, data: NewPostSchema) -> Post:
 @using_session
 def get_all_posts(session: Session) -> List[Post]:
     result = (
-        session.query(Post, func.count(BlogPostLikes.id).label("nr_likes"))
+        session.query(Post, func.count(BlogPostLike.id).label("nr_likes"))
         .outerjoin(Post.likers)
         .group_by(Post.id)
         .all()
@@ -85,7 +96,7 @@ def get_all_posts(session: Session) -> List[Post]:
 @using_session
 def get_single_post(session: Session, post_id: int) -> Optional[Post]:
     result = (
-        session.query(Post, func.count(BlogPostLikes.id).label("nr_likes"))
+        session.query(Post, func.count(BlogPostLike.id).label("nr_likes"))
         .outerjoin(Post.likers)
         .filter(Post.id == post_id)
         .group_by(Post.id)
